@@ -1,0 +1,9 @@
+<?php
+return array(
+    'server' => 'localhost',
+    'port' => 6667,
+    'params' => array(
+        'user' => 'wozozo',
+        'nick' => 'wozozo',
+    )
+);
