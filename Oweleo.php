@@ -55,9 +55,29 @@ class Oweleo extends Net_IRC_Client
         }
     }
     protected function run_plugin($name, $action, $message, array $params) {
-        if (isset($this->plugins[$name])) {
-            $params = array_merge(array($message, &$this->stacks), $params);
-            call_user_func_array($this->plugins[$name]->$action, $params);
+        $pid = pcntl_fork();
+        if ($pid == -1) {
+            throw new RuntimeException($name. ': fork failed');
+        } else if ($pid) {
+            // parent proc
+            echo '[p] called: '. $name, PHP_EOL;
+            pcntl_wait($status);
+        } else {
+            // child proc
+            echo '[c] called: '. $name, PHP_EOL;
+            $c_pid = pcntl_fork();
+            if ($c_pid == -1) {
+                throw new RuntimeException($name);
+            } else if ($c_pid) {
+                exit(0);
+            } else {
+                if (isset($this->plugins[$name])) {
+                    $params = array_merge(array($message, &$this->stacks), $params);
+                    call_user_func_array($this->plugins[$name]->$action, $params);
+                }
+                $this->send_stacks();
+                exit(0);
+            }
         }
     }
     protected function load_plugin($name) {
@@ -80,6 +100,10 @@ class Oweleo extends Net_IRC_Client
             unset($this->plugins[$plugin]);
         }
         $this->plugins = array();
+    }
+
+    protected function debug($msg) {
+        echo trim($msg), PHP_EOL;
     }
 }
 
