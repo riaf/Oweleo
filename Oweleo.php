@@ -33,7 +33,7 @@ class Oweleo extends Net_IRC_Client
         $this->send_stacks();
     }
 
-    protected function send_stacks() {
+    public function send_stacks() {
         if (!empty($this->stacks)) {
             foreach ($this->stacks as $stack) {
                 $this->post('NOTICE', $stack['prefix'], ':'. $stack['message']);
@@ -72,6 +72,7 @@ class Oweleo extends Net_IRC_Client
                 exit(0);
             } else {
                 if (isset($this->plugins[$name])) {
+                    $message->oweleo = $this;
                     $params = array_merge(array($message, &$this->stacks), $params);
                     call_user_func_array($this->plugins[$name]->$action, $params);
                 }
