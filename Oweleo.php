@@ -1,5 +1,6 @@
 <?php
 require_once 'Net/IRC/Client.php';
+require_once 'OweleoPlugin.php';
 
 /**
  * Oweleo
@@ -10,6 +11,7 @@ class Oweleo extends Net_IRC_Client
     protected $config = array();
     protected $plugins = array();
     protected $plugins_dir = 'plugins';
+    protected $available_plugins_dir = 'plugins-available';
 
     public function start() {
         $this->init();
@@ -24,10 +26,10 @@ class Oweleo extends Net_IRC_Client
     }
 
     protected function on_privmsg($m) {
-        list($prefix, $message) = $m->params;
+        list($prefix, $message) = $m->params();
         foreach ($this->plugins as $plugin_name => $plugin) {
-            if (preg_match($plugin->pattern, $message, $match)) {
-                $this->run_plugin($plugin_name, 'on_privmsg', $m, $match);
+            if (preg_match($plugin->pattern(), $message, $match)) {
+                $this->run_plugin($plugin_name, 'on_privmsg', $m, array($match));
             }
         }
         $this->send_stacks();
@@ -72,9 +74,8 @@ class Oweleo extends Net_IRC_Client
                 exit(0);
             } else {
                 if (isset($this->plugins[$name])) {
-                    $message->oweleo = $this;
-                    $params = array_merge(array($message, &$this->stacks), $params);
-                    call_user_func_array($this->plugins[$name]->$action, $params);
+                    $action = $this->plugins[$name]->action($action);
+                    $action($this, $message, $params);
                 }
                 $this->send_stacks();
                 exit(0);
@@ -82,8 +83,10 @@ class Oweleo extends Net_IRC_Client
         }
     }
     protected function load_plugin($name) {
+        $this->debug('loading plugin... '. $name);
         $path = $this->plugins_dir. '/'. $name. '.php';
         if (file_exists($path) && is_readable($path)) {
+            $this->debug('load plugin:'. $name);
             $this->plugins[$name] = include($path);
         } else {
             throw new RuntimeException($name. ' plugins is not permitted.');
