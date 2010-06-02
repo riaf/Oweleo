@@ -7,11 +7,9 @@ require_once 'OweleoPlugin.php';
  **/
 class Oweleo extends Net_IRC_Client
 {
-    protected $stacks = array();
     protected $config = array();
     protected $plugins = array();
     protected $plugins_dir = 'plugins';
-    protected $available_plugins_dir = 'plugins-available';
 
     public function start() {
         $this->init();
@@ -21,26 +19,18 @@ class Oweleo extends Net_IRC_Client
         $this->config = $config;
     }
 
-    protected function on_message() {
-        $this->send_stacks();
-    }
-
     protected function on_privmsg($m) {
         list($prefix, $message) = $m->params();
+        // plugin-manager
+        if (strpos($message, '@'. $this->nick) === 0) {
+            $this->plugin_manager($prefix, $message);
+        }
+
+        // 通常のアクション
         foreach ($this->plugins as $plugin_name => $plugin) {
             if (preg_match($plugin->pattern(), $message, $match)) {
-                $this->run_plugin($plugin_name, 'on_privmsg', $m, array($match));
+                $this->run_plugin($plugin_name, 'on_privmsg', $m, $match);
             }
-        }
-        $this->send_stacks();
-    }
-
-    public function send_stacks() {
-        if (!empty($this->stacks)) {
-            foreach ($this->stacks as $stack) {
-                $this->post('NOTICE', $stack['prefix'], ':'. $stack['message']);
-            }
-            $this->stacks = array();
         }
     }
     protected function init() {
@@ -49,11 +39,61 @@ class Oweleo extends Net_IRC_Client
         foreach ($plugins as $plugin) {
             if ($plugin->isFile()) {
                 try {
-                    $this->load_plugin($plugin->getBasename('.php'));
+                    // $this->load_plugin($plugin->getBasename('.php'));
                 } catch (RuntimeException $e) {
                     $this->on_error($e->getMessage());
                 }
             }
+        }
+    }
+    protected function plugin_manager($prefix, $message) {
+        $args = array_map('trim', explode(' ', $message));
+        $nick = array_shift($args);
+        if (empty($args)) {
+            return;
+        }
+        $flag = array_shift($args);
+        if ($flag != 'plugin') {
+            return;
+        }
+        $command = strtolower(array_shift($args));
+        switch ($command) {
+            case 'list':
+                $this->notice($prefix, 'Loaded Plugins: '. count($this->plugins));
+                foreach ($this->plugins as $plugin_name => $plugin) {
+                    usleep(100);
+                    $this->notice($prefix, '  '. $plugin_name);
+                }
+                break;
+            case 'list-all':
+                $plugins = new GlobIterator($this->plugins_dir. '/*.php', FilesystemIterator::SKIP_DOTS);
+                $this->notice($prefix, 'Available Plugins: '. count($plugins));
+                foreach ($plugins as $plugin) {
+                    usleep(100);
+                    if ($plugin->isFile()) {
+                        $this->notice($prefix, '  '. $plugin->getBasename('.php'));
+                    }
+                }
+                break;
+            case 'load':
+                try {
+                    $this->load_plugin($args[0]);
+                    $this->notice($prefix, $args[0]. ' plugin loaded');
+                } catch (Exception $e) {
+                    $this->notice($prefix, $e->getMessage());
+                }
+                break;
+            case 'remove':
+            case 'rm':
+                try {
+                    $this->remove_plugin($args[0]);
+                } catch (Exception $e) {
+                    $this->notice($prefix, $e->getMessage());
+                }
+                break;
+            case 'flush':
+                $this->flush_plugins();
+                break;
         }
     }
     protected function run_plugin($name, $action, $message, array $params) {
@@ -74,10 +114,8 @@ class Oweleo extends Net_IRC_Client
                 exit(0);
             } else {
                 if (isset($this->plugins[$name])) {
-                    $action = $this->plugins[$name]->action($action);
-                    $action($this, $message, $params);
+                    $action = $this->plugins[$name]->$action($this, $message, $params);
                 }
-                $this->send_stacks();
                 exit(0);
             }
         }
@@ -107,6 +145,7 @@ class Oweleo extends Net_IRC_Client
     }
 
     protected function debug($msg) {
+        // echo printf('%s / %s', memory_get_usage(), memory_get_peak_usage()), PHP_EOL;
         echo trim($msg), PHP_EOL;
     }
 }

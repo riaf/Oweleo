@@ -10,11 +10,11 @@ class OweleoPlugin
         }
         $this->actions = $actions;
     }
-    public function action($action) {
-        return isset($this->actions[$action])? $this->actions[$action]: function() {};
-    }
     public function pattern() {
         return $this->pattern;
+    }
+    public function __call($method, $args) {
+        return isset($this->actions[$method])? call_user_func_array($this->actions[$method], $args): null;
     }
 }
 
