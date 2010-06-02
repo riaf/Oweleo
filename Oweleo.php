@@ -3,7 +3,8 @@ require_once 'Net/IRC/Client.php';
 require_once 'OweleoPlugin.php';
 
 /**
- * Oweleo
+ * Oweleo - the IRC Bot
+ * @author Keisuke SATO <riaf@nequal.jp>
  **/
 class Oweleo extends Net_IRC_Client
 {
@@ -11,41 +12,69 @@ class Oweleo extends Net_IRC_Client
     protected $plugins = array();
     protected $plugins_dir = 'plugins';
 
+    /**
+     * 実行開始
+     * @return void
+     **/
     public function start() {
         $this->init();
         $this->connect();
     }
+    /**
+     * 設定をセット
+     * @param   array   $config
+     * @return  void
+     **/
     public function set_config(array $config) {
         $this->config = $config;
     }
 
-    protected function on_privmsg($m) {
+    /**
+     * privmsg 受信時のアクション
+     * プラグインマネージャと，各プラグインの実行を行う
+     * @param Net_IRC_Message $m
+     * @return void
+     **/
+    protected function on_privmsg(Net_IRC_Message $m) {
         list($prefix, $message) = $m->params();
         // plugin-manager
         if (strpos($message, '@'. $this->nick) === 0) {
             $this->plugin_manager($prefix, $message);
         }
 
-        // $BDL>o$N%"%/%7%g%s(B
+        // 通常のアクション
         foreach ($this->plugins as $plugin_name => $plugin) {
             if (preg_match($plugin->pattern(), $message, $match)) {
                 $this->run_plugin($plugin_name, 'on_privmsg', $m, $match);
             }
         }
     }
+
+    /**
+     * 初期化する
+     * @return void
+     **/
     protected function init() {
+        return;
         // load plugins
         $plugins = new GlobIterator($this->plugins_dir. '/*.php', FilesystemIterator::SKIP_DOTS);
         foreach ($plugins as $plugin) {
             if ($plugin->isFile()) {
                 try {
-                    // $this->load_plugin($plugin->getBasename('.php'));
+                    $this->load_plugin($plugin->getBasename('.php'));
                 } catch (RuntimeException $e) {
                     $this->on_error($e->getMessage());
                 }
             }
         }
     }
+    /**
+     * プラグインマネージャ
+     * プラグインのロードなど
+     * @param string $prefix
+     * @param string $message
+     * @return void
+     **/
     protected function plugin_manager($prefix, $message) {
         $args = array_map('trim', explode(' ', $message));
         $nick = array_shift($args);
@@ -96,6 +125,14 @@ class Oweleo extends Net_IRC_Client
                 break;
         }
     }
+    /**
+     * プラグインを実行する
+     * @param string $name   プラグイン名
+     * @param string $action 実行するアクション
+     * @param Net_IRC_Message $message
+     * @param array $params
+     * @return void
+     **/
     protected function run_plugin($name, $action, $message, array $params) {
         $pid = pcntl_fork();
         if ($pid == -1) {
@@ -120,6 +157,11 @@ class Oweleo extends Net_IRC_Client
             }
         }
     }
+    /**
+     * プラグインを読み込む
+     * @param string $name
+     * @return void
+     **/
     protected function load_plugin($name) {
         $this->debug('loading plugin... '. $name);
         $path = $this->plugins_dir. '/'. $name. '.php';
@@ -130,12 +172,21 @@ class Oweleo extends Net_IRC_Client
             throw new RuntimeException($name. ' plugins is not permitted.');
         }
     }
+    /**
+     * プラグインを破棄する
+     * @param string $name
+     * @return void
+     **/
     protected function remove_plugin($name) {
         if (isset($this->plugins[$name])) {
             $this->plugins[$name] = null;
             unset($this->plugins[$name]);
         }
     }
+    /**
+     * プラグインをすべて破棄する
+     * @return void
+     **/
     protected function flush_plugins() {
         foreach (array_keys($this->plugins) as $plugin) {
             $this->plugins[$plugin] = null;

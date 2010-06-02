@@ -1,9 +1,18 @@
 <?php
+/**
+ * OweleoPlugin
+ * @author Keisuke SATO <riaf@nequal.jp>
+ **/
 class OweleoPlugin
 {
     protected $pattern = '/.*/';
     protected $actions;
 
+    /**
+     * コンストラクタ
+     * @param string $pattern
+     * @param array $actions
+     **/
     public function __construct($pattern=null, array $actions) {
         if (!is_null($pattern)) {
             $this->pattern = $pattern;
