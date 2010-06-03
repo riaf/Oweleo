@@ -44,7 +44,7 @@ class Oweleo extends Net_IRC_Client
 
         // 通常のアクション
         foreach ($this->plugins as $plugin_name => $plugin) {
-            if (preg_match($plugin->pattern(), $message, $match)) {
+            if ($plugin->pattern() != null && preg_match($plugin->pattern(), $message, $match)) {
                 $this->run_plugin($plugin_name, 'on_privmsg', $m, $match);
             }
         }
@@ -133,7 +133,7 @@ class Oweleo extends Net_IRC_Client
      * @param array $params
      * @return void
      **/
-    protected function run_plugin($name, $action, $message, array $params) {
+    protected function run_plugin($name, $action, $message=null, array $params=null) {
         $pid = pcntl_fork();
         if ($pid == -1) {
             throw new RuntimeException($name. ': fork failed');
@@ -164,11 +164,13 @@ class Oweleo extends Net_IRC_Client
      **/
     protected function load_plugin($name) {
         $this->debug('loading plugin... '. $name);
-        $path = $this->plugins_dir. '/'. $name. '.php';
-        if (file_exists($path) && is_readable($path)) {
+        $path = realpath($this->plugins_dir. '/'. $name. '.php');
+        if ($path !== false && strpos($path, realpath($this->plugins_dir)) === 0 && is_readable($path)) {
             $this->debug('load plugin:'. $name);
             $this->plugins[$name] = include($path);
+            $this->run_plugin($name, 'on_load');
         } else {
+            $this->debug($path);
             throw new RuntimeException($name. ' plugins is not permitted.');
         }
     }

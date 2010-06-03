@@ -5,7 +5,7 @@
  **/
 class OweleoPlugin
 {
-    protected $pattern = '/.*/';
+    protected $pattern;
     protected $actions;
 
     /**
