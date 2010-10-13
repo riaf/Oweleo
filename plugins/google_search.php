@@ -1,7 +1,7 @@
 <?php
 require_once 'HTTP/Request2.php';
 
-return new OweleoPlugin('/^g\? (.+)$/', array(
+return new OweleoPlugin('/^g\s+(.+)$/', array(
     'on_privmsg' => function(Oweleo $oweleo, Net_IRC_Message $msg, $match) {
         list($prefix, $mes) = $msg->params();
         $request = new HTTP_Request2('http://ajax.googleapis.com/ajax/services/search/web');
