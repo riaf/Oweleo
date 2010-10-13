@@ -11,6 +11,7 @@ class Oweleo extends Net_IRC_Client
     protected $config = array();
     protected $plugins = array();
     protected $plugins_dir = 'plugins';
+    protected $channel_plugins = array();
 
     /**
      * 実行開始
@@ -20,6 +21,7 @@ class Oweleo extends Net_IRC_Client
         $this->init();
         $this->connect();
     }
+
     /**
      * 設定をセット
      * @param   array   $config
@@ -27,6 +29,21 @@ class Oweleo extends Net_IRC_Client
      **/
     public function set_config(array $config) {
         $this->config = $config;
+    }
+
+    /**
+     * 設定の setter/getter
+     * @param string $name
+     * @param mixed $value
+     * @return mixed
+     **/
+    public function config($name, $value=null) {
+        if (!is_null($value)) {
+            $this->config[$name] = $value;
+        } else {
+            $value = isset($this->config[$name])? $this->config[$name]: $value;
+        }
+        return $value;
     }
 
     /**
@@ -43,9 +60,16 @@ class Oweleo extends Net_IRC_Client
         }
 
         // 通常のアクション
-        foreach ($this->plugins as $plugin_name => $plugin) {
-            if ($plugin->pattern() != null && preg_match($plugin->pattern(), $message, $match)) {
-                $this->run_plugin($plugin_name, 'on_privmsg', $m, $match);
+        if (!isset($this->channel_plugins[$prefix])) {
+            $this->channel_plugins[$prefix] = array();
+        }
+        foreach ($this->channel_plugins[$prefix] as $plugin_name => $status) {
+            if ($status && isset($this->plugins[$plugin_name])) {
+                $plugin = $this->plugins[$plugin_name];
+                if ($plugin->pattern() != null && preg_match($plugin->pattern(), $message, $match)) {
+                    $this->run_plugin($plugin_name, 'on_privmsg', $m, $match);
+                }
+                $plugin = null;
             }
         }
     }
@@ -55,7 +79,6 @@ class Oweleo extends Net_IRC_Client
      * @return void
      **/
     protected function init() {
-        return;
         // load plugins
         $plugins = new GlobIterator($this->plugins_dir. '/*.php', FilesystemIterator::SKIP_DOTS);
         foreach ($plugins as $plugin) {
@@ -67,7 +90,22 @@ class Oweleo extends Net_IRC_Client
                 }
             }
         }
+        // defaults
+        if (file_exists($this->plugins_dir. '/defaults.ini')) {
+            $defaults = parse_ini_file($this->plugins_dir. '/defaults.ini');
+            foreach ($defaults as $prefix => $plugins) {
+                $prefix = '#'. $prefix;
+                if (!isset($this->channel_plugins[$prefix])) {
+                    $this->channel_plugins[$prefix] = array();
+                }
+                $plugins = array_map('trim', explode(',', $plugins));
+                foreach ($plugins as $plugin_name) {
+                    $this->channel_plugins[$prefix][$plugin_name] = true;
+                }
+            }
+        }
     }
+
     /**
      * プラグインマネージャ
      * プラグインのロードなど
@@ -85,28 +123,31 @@ class Oweleo extends Net_IRC_Client
         if ($flag != 'plugin') {
             return;
         }
+        if (!isset($this->channel_plugins[$prefix])) {
+            $this->channel_plugins[$prefix] = array();
+        }
         $command = strtolower(array_shift($args));
         switch ($command) {
             case 'list':
-                $this->notice($prefix, 'Loaded Plugins: '. count($this->plugins));
+            case 'ls':
+                $this->notice($prefix, 'Loaded Plugins: '. count($this->channel_plugins[$prefix]));
+                foreach ($this->channel_plugins[$prefix] as $plugin_name => $status) {
+                    if ($status) {
+                        usleep(100);
+                        $this->notice($prefix, '  '. $plugin_name);
+                    }
+                }
+                break;
+            case 'list-all':
+                $this->notice($prefix, 'Available Plugins: '. count($this->plugins));
                 foreach ($this->plugins as $plugin_name => $plugin) {
                     usleep(100);
                     $this->notice($prefix, '  '. $plugin_name);
                 }
                 break;
-            case 'list-all':
-                $plugins = new GlobIterator($this->plugins_dir. '/*.php', FilesystemIterator::SKIP_DOTS);
-                $this->notice($prefix, 'Available Plugins: '. count($plugins));
-                foreach ($plugins as $plugin) {
-                    usleep(100);
-                    if ($plugin->isFile()) {
-                        $this->notice($prefix, '  '. $plugin->getBasename('.php'));
-                    }
-                }
-                break;
             case 'load':
                 try {
-                    $this->load_plugin($args[0]);
+                    $this->channel_plugins[$prefix][$args[0]] = true;
                     $this->notice($prefix, $args[0]. ' plugin loaded');
                 } catch (Exception $e) {
                     $this->notice($prefix, $e->getMessage());
@@ -115,16 +156,21 @@ class Oweleo extends Net_IRC_Client
             case 'remove':
             case 'rm':
                 try {
-                    $this->remove_plugin($args[0]);
+                    if (isset($this->channel_plugins[$prefix][$args[0]])) {
+                        $this->channel_plugins[$prefix][$args[0]] = false;
+                    }
                 } catch (Exception $e) {
                     $this->notice($prefix, $e->getMessage());
                 }
                 break;
-            case 'flush':
+            case 'reload!':
                 $this->flush_plugins();
+                $this->init();
+                $this->notice('reloaded plugins['. count($this->plugins). ']');
                 break;
         }
     }
+
     /**
      * プラグインを実行する
      * @param string $name   プラグイン名
@@ -157,6 +203,7 @@ class Oweleo extends Net_IRC_Client
             }
         }
     }
+
     /**
      * プラグインを読み込む
      * @param string $name
@@ -174,6 +221,7 @@ class Oweleo extends Net_IRC_Client
             throw new RuntimeException($name. ' plugins is not permitted.');
         }
     }
+
     /**
      * プラグインを破棄する
      * @param string $name
@@ -185,6 +233,7 @@ class Oweleo extends Net_IRC_Client
             unset($this->plugins[$name]);
         }
     }
+
     /**
      * プラグインをすべて破棄する
      * @return void
